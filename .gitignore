@@ -1,0 +1,36 @@
+# --- Your Specific Requests ---
+# Virtual Environments
+venv/
+.venv/
+env/
+
+# Data files (Excel, TSV, CSV)
+*.xlsx
+*.tsv
+*.csv
+
+# Python Bytecode and Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+
+# --- Standard Python Additions ---
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Environment Variables (Crucial for security!)
+.env
+.flaskenv
+
+# IDE / Editor folders
+.vscode/
+.idea/
+.DS_Store
+
+# Testing and Coverage
+.pytest_cache/
+.coverage
+htmlcov/

@@ -1,0 +1,24 @@
+{
+    "learning_context": {
+        "A":"classroom",
+        "B":"tutoring",
+        "C":"collaborative work"
+        },
+    "comm_modality": { 
+        "A":"in-person",
+        "B":"synchronous online spoken",
+        "C":"synchronous chat",
+        "D":"asynchronous chat"
+        },
+    "agent_config": {
+        "A":"Human-Human",
+        "B":"Human-AI"
+        },
+    "edu_level":{
+        "A":"primary",
+        "B":"middle",
+        "C":"high",
+        "D":"university"
+    }
+}
+    
