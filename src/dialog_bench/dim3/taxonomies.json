@@ -73,5 +73,15 @@
         "MAINTAIN_FulfillsR_InitiatesOffTopic": "Initiates off-topic conversation.",
         "MAINTAIN_FulfillsR_JoinsOffTopic": "Joins off-topic conversation.",
         "None": "None of the above mentioned options."
+    },
+    "delidata":{
+        "Probing - Moderation": "Utterances that are not directly concerned with the task itself, but with how participants converse about it, including regulating or moderating the flow and dynamics of the conversation.",
+        "Probing - Reasoning": "Utterances that provoke discussion, deliberation, or argumentation focused on participants’ reasoning without introducing novel information.",
+        "Probing - Solution": "Utterances that probe, verify, or discuss the management of the task’s solution without contributing new solution information.",
+        "Non Probing - Reasoning": "Utterances concerned with participants’ reasoning and argumentation that directly contribute to the discussion of the task and its solution. Reasoning takes priority over other labels.",
+        "Non Probing - Solution": "Utterances that manage, propose, or state the solution of the task as part of the ongoing discussion.",
+        "Non Probing - Agree": "Utterances expressing agreement with a previous argument, reasoning process, or proposed solution.",
+        "Non Probing - Disagree": "Utterances expressing disagreement with a previous argument, reasoning process, or proposed solution.",
+        "None": "Utterances not related to probing or non-probing deliberation, including familiarities, greetings, fillers, hesitation cues, or other non-task-related remarks."
     }
 }

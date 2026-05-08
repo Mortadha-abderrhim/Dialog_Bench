@@ -67,23 +67,21 @@ def evaluate_annotation(data,generate,nb_samples,task="act_annotation"):
                     
     df = pd.DataFrame(df)
     ## We choose to remove examples where the act to be predicted is not in the taxonmy usually due to typos in the data (can be matched to closest but ...)
-    print(df[df["dataset"]=="weighttasks"])
     df = df[df.apply(lambda x: all([y.strip() in [z.lower() for z in list(taxonomies[x["dataset"]].keys())]for y in x["act"].split(",")]),axis=1)]
 
-    ## 1st consideration: For MathDial only teacher is annotated // Dialogues are also quite short so no random chunking for mathdial --- Done
-    ## 2nd consideration: Balance for different datasets. // The nb samples is generated for each taxonomy
-    ## 3nd consideration: Balance for None values, the rest I don't think we care to balance for them. // The none examples are set to 10% of the nb samples
+    
     testset = []
     for tax, grp in df.groupby("taxonomy"):
 
         if "none" in grp["act"].unique():
-            nones = grp[grp["act"]=="none"].sample(int(max(grp.shape[1],nb_samples)*0.1))
+            nones = grp[grp["act"]=="none"].sample(int(min(grp[grp["act"]=="none"].shape[0],nb_samples*0.1)))
             testset.append(nones)
-            not_nones = grp[grp["act"]!="none"].sample(int(max(grp.shape[1],nb_samples)-nones.shape[0]))
+            not_nones = grp[grp["act"]!="none"].sample(int(min(grp[grp["act"]!="none"].shape[0],nb_samples-nones.shape[0])))
             testset.append(not_nones)
         else:
-            testset.append(grp.sample(max(grp.shape[1],nb_samples)))
+            testset.append(grp.sample(min(grp.shape[0],nb_samples)))
     testset = pd.concat(testset,ignore_index=True)
+    print(testset["dataset"].value_counts())
     if task == "act_annotation":
         testset["generated"] = testset.progress_apply(lambda x: generate(random.choice(list(prompts[task]["multi" if x["dataset"] in multi else "single"].values())).format(TAXONOMY= x["taxonomy"],ANNOTATED_DIALOGUE = x["dialogue"],NEXT_TURN=x["turn"])),axis=1)
     else:

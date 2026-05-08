@@ -20,12 +20,12 @@ FEATURES = [
     "dataset",
     "language"
 ]
-DATASETS = ["ncte","talkmoves","eedi","tscc","mathdial","weighttasks"]
-CONTEXTS = ["classroom","classroom","tutoring","tutoring","tutoring","collaborative work"]
-MODALITIES = ["in-person","in-person","synchronous chat","synchronous chat","synchronous chat","in-person"]
-CONFIGS = ["Human-Human","Human-Human","Human-Human","Human-Human","Human-AI","Human-Human"]
-SUBJECTS = ["maths","maths","maths","language","maths","physics, problem solving"]
-LANGUAGE = ["english","english","english","english","english","english"]
+DATASETS = ["ncte","talkmoves","eedi","tscc","mathdial","weighttasks","delidata"]
+CONTEXTS = ["classroom","classroom","tutoring","tutoring","tutoring","collaborative work","collaborative work"]
+MODALITIES = ["in-person","in-person","synchronous chat","synchronous chat","synchronous chat","in-person","synchronous chat"]
+CONFIGS = ["Human-Human","Human-Human","Human-Human","Human-Human","Human-AI","Human-Human","Human-Human"]
+SUBJECTS = ["maths","maths","maths","language","maths","physics, problem solving","problem solving"]
+LANGUAGE = ["english","english","english","english","english","english","english"]
 
 def create_mapping_dict():
     mapping_dict = {}
@@ -301,7 +301,29 @@ def load_weighttaks(save=True):
         warnings.warn("Preprocessed WeightTasks dataset not saved. To save it, set save=True.")
     return df
         
-    
+def load_delidata(save=True):
+    ds = load_dataset("gkaradzhov/DeliData")
+    df = ds["train"].to_pandas()
+    df = df[df["message_type"]=="MESSAGE"]
+    df["annotation_type"] = df["annotation_type"].fillna("None").apply(lambda x: x.replace("-"," ").replace("deliberation","").strip())
+    df["annotation_target"] = df["annotation_target"].fillna("0").apply(lambda x: x.replace("0",""))
+    df["acts"]  = df.apply(lambda x: x["annotation_type"] + (" - "+x["annotation_target"]) if x["annotation_target"]!="" else "",axis=1)
+    df["acts"] = df["acts"].apply(lambda x: x if x!="" else "None")
+    data = []
+    for ind,grp in df.groupby("group_id"):
+        data.append({
+            "speakers": grp["origin"].tolist(),
+            "turns":grp["original_text"].tolist(),
+            "dialogic_acts":grp["acts"].tolist(),
+            "edu_level":"university",
+            **metadata["delidata"]
+        })
+    df = pd.DataFrame(data)
+    if save:
+        df.to_csv("../../../data/DeliData/delidata.csv",index=False)
+    else:
+        warnings.warn("Preprocessed DeliData dataset not saved. To save it, set save=True.")
+    return df
     
 
 
@@ -344,7 +366,8 @@ if __name__ == "__main__":
         df_tscc = load_tscc(save=args.save)
         df_mathdial = load_mathdial(save=args.save)
         df_weighttasks = load_weighttaks(save=args.save)
-        final_df = pd.concat([df_ncte, df_talkmoves, df_eedi, df_tscc, df_mathdial, df_weighttasks], ignore_index=True)
+        df_deli = load_delidata(save=args.save)
+        final_df = pd.concat([df_ncte, df_talkmoves, df_eedi, df_tscc, df_mathdial, df_weighttasks,df_deli], ignore_index=True)
     else:
         if args.dataset == "ncte":
             final_df = load_ncte(save=args.save)
@@ -358,6 +381,8 @@ if __name__ == "__main__":
             final_df = load_mathdial(save=args.save)
         elif args.dataset == "weighttasks":
             final_df = load_weighttaks(save=args.save)
+        elif args.dataset == "delidata":
+            final_df = load_delidata(save=args.save)
 
     if args.save:
         final_df.to_csv(args.path,index=False)
