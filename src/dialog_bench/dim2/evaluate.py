@@ -25,7 +25,7 @@ def evaluate_teacher(data,generate,nb_samples=100):
         prompts = list(json.load(f)["teacher_identification"].values())
     data = data[data["speakers"].apply(lambda speakers: "tutor" in set([str(x).lower() for x in speakers]) or "teacher" in set([str(x).lower() for x in speakers]) or "t" in set([str(x).lower() for x in speakers]))]
     data["teacher"] = data["speaker_mapping"].apply(lambda x: x.get("teacher",x.get("Teacher",x.get("tutor",x.get("Tutor",x.get("t",x.get("T",None)))))))
-    data["dialogue"] = data.apply(lambda x: random.choice([dialog if x["teacher"] in dialog else "" for dialog in generate_anonymized_dialogue(x,chunked=True,max_chunk_size=len(x["speakers"])) ]),axis=1)
+    data["dialogue"] = data.apply(lambda x: random.choice([dialog if x["teacher"] in dialog else "" for dialog in generate_anonymized_dialogue(x,chunked=True,max_chunk_size=min(len(x["speakers"]),30)) ]),axis=1)
     data = data[data.apply(lambda x: x["teacher"] in x["dialogue"],axis=1)]
     testset = data[["dialogue","teacher"]].sample(nb_samples)
     testset["generated"] = testset["dialogue"].progress_apply(lambda x: generate(random.choice(prompts).format(INPUT_DIALOGUE=x)))
@@ -35,7 +35,7 @@ def evaluate_teacher(data,generate,nb_samples=100):
 def evaluate_next_speaker(data,generate,nb_samples = 100):
     with open(prompt_path,"r") as f:
         prompts = list(json.load(f)["speaker_identification"].values())
-    data["dialogue"] = data.apply(lambda x: generate_anonymized_dialogue(x,chunked=True,max_chunk_size=len(x["speakers"])),axis=1)
+    data["dialogue"] = data.apply(lambda x: generate_anonymized_dialogue(x,chunked=True,max_chunk_size=min(len(x["speakers"]),30)),axis=1)
     df = []
     for chunks in data["dialogue"]:
         for chunk in chunks:
@@ -57,8 +57,7 @@ def evaluate_next_speaker(data,generate,nb_samples = 100):
 
 def evaluate_turn(data,generate,sim_model,pos = "next",nb_samples=100):
     with open(prompt_path,"r") as f:
-        if pos == "post":
-            prompts = list(json.load(f)[f"{pos}_turn"].values())
+        prompts = list(json.load(f)[f"{pos}_turn"].values())
 
     data["chunks"] = data.apply(lambda x: [random.choice(generate_anonymized_dialogue(x,chunked=True,max_chunk_size=min(10,len(x["speakers"]))))],axis=1)
     data = data[data["chunks"].apply(lambda x: x!=[""])].sample(int(nb_samples*1.5))
@@ -92,7 +91,7 @@ def evaluate_turn(data,generate,sim_model,pos = "next",nb_samples=100):
             df.append({"dialogue":dialogue,"correct":correct,"options":choices})
     testset = pd.DataFrame(df).sample(nb_samples)
     warnings.warn("Generating Model Answers ...")
-    testset["generated"] = testset.progress_apply(lambda x: generate(random.choice(prompts).format(INPUT_DIALOGUE=x["dialogue"]),OPTION_A=x["options"][0],OPTION_B=x["options"][1],OPTION_C=x["options"][2],OPTION_D=x["options"][3]),axis=1)
+    testset["generated"] = testset.progress_apply(lambda x: generate(random.choice(prompts).format(INPUT_DIALOGUE=x["dialogue"],OPTION_A=x["options"][0],OPTION_B=x["options"][1],OPTION_C=x["options"][2],OPTION_D=x["options"][3])),axis=1)
     score = (testset["generated"]==testset["correct"]).mean()
     return score
 
@@ -176,6 +175,9 @@ if __name__ == "__main__":
     elif args.backend == "unsloth":
         model, tokenizer = load_unsloth(args.model,args.type)
         generate = lambda message: generate_unsloth(message,model,tokenizer,args.type,ast.literal_eval(args.gen_args))
+    elif args.backend == "hf":
+        model, tokenizer = load_model_hf(args.model,args.type)
+        generate = lambda message: generate_hf(message,model,tokenizer,args.type,ast.literal_eval(args.gen_args))
     else:   
         raise NotImplementedError("Backend is not supported for now")
     

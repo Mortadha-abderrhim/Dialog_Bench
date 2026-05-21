@@ -34,8 +34,9 @@ def evaluate(data,col,generate,sim_model,nb_samples =100):
             continue
         if data[data[col]==value].shape[0] > nb_samples:
             test = data[data[col]==value]
-            test["dialogue"]= test.apply(lambda x: generate_anonymized_dialogue(x)[0],axis=1)
-            test = test[test["dialogue"].apply(lambda x: len(x) != 0)].sample(nb_samples)
+            test["dialogue"]= test.apply(lambda x: generate_anonymized_dialogue(x,chunked=True,max_chunk_size=20,min_chunk_size=5)[0],axis=1)
+            test = test[test["dialogue"].apply(lambda x: len(x) != 0)]
+            test = test.sample(min(nb_samples,test.shape[0]))
             
             testset.append(test[["dialogue",col]])
         else:
@@ -46,7 +47,7 @@ def evaluate(data,col,generate,sim_model,nb_samples =100):
                 for dialogue in dialogues:
                     examples.append({"dialogue":dialogue,col:row[col]})
 
-            testset.append(pd.DataFrame(examples).sample(nb_samples))
+            testset.append(pd.DataFrame(examples).sample(min(nb_samples,len(examples))))
     testset = pd.concat(testset,ignore_index=True).sample(frac=1)
     warnings.warn("Generating resposes for the test set, this may take a while...")
     testset["generated"] = testset["dialogue"].progress_apply(lambda x: generate(random.choice(list(prompts[col].values())).format(INPUT_DIALOGUE=x)))
@@ -95,6 +96,9 @@ if __name__ == "__main__":
     elif args.backend == "unsloth":
         model, tokenizer = load_unsloth(args.model,args.type)
         generate = lambda message: generate_unsloth(message,model,tokenizer,args.type,ast.literal_eval(args.gen_args))
+    elif args.backend == "hf":
+        model, tokenizer = load_model_hf(args.model,args.type)
+        generate = lambda message: generate_hf(message,model,tokenizer,args.type,ast.literal_eval(args.gen_args))
     else:   
         raise NotImplementedError("Backend is not supported for now")
     
@@ -115,11 +119,7 @@ if __name__ == "__main__":
     else:
         columns = ["learning_context", "comm_modality","agent_config", "subject", "edu_level"]
         for col in columns:
-            try:
-                score = evaluate(data,col,generate,sim_model,args.samples)
-                with jsonlines.open(results_path, mode='a') as writer:
-                    writer.write({"dim":"1","column": col, "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args})
-                print(f"Score for {col}: {score}")
-            except:
-                warnings.warn(f"Error evaluating column {col}, skipping...")
-
+            score = evaluate(data,col,generate,sim_model,args.samples)
+            with jsonlines.open(results_path, mode='a') as writer:
+                writer.write({"dim":"1","column": col, "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args})
+            print(f"Score for {col}: {score}")

@@ -122,6 +122,9 @@ if __name__ == "__main__":
     elif args.backend == "unsloth":
         model, tokenizer = load_unsloth(args.model,args.type)
         generate = lambda message: generate_unsloth(message,model,tokenizer,args.type,ast.literal_eval(args.gen_args))
+    elif args.backend == "hf":
+        model, tokenizer = load_model_hf(args.model,args.type)
+        generate = lambda message: generate_hf(message,model,tokenizer,args.type,ast.literal_eval(args.gen_args))
     else:   
         raise NotImplementedError("Backend is not supported for now")
     

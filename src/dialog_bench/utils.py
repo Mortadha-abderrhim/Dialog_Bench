@@ -8,6 +8,12 @@ from tqdm import tqdm
 from openai import OpenAI
 import os
 import numpy as np
+import re
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer,T5ForConditionalGeneration
+
+#torch._dynamo.config.suppress_errors = True
+
 tqdm.pandas() 
 
 
@@ -115,13 +121,15 @@ def generate_ollama(message,url,model,options={}):
 """
     Generate a response using openAI API, the input message is a parameter string, the name of the model as well, take API key from environment
 """
-def generate_openai(message,model):
+def generate_openai(message,model,url = "http://localhost:8000/v1"):
     
-    client = OpenAI(os.environ.get("OPENAI_API_KEY"))
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"),base_url=url)
     response = client.responses.create(
         model=model,
-        input=message
-    )
+        input = message,
+        reasoning={"effort": "none"}
+        
+        )
     return response.output_text
 def load_unsloth(model,type):
     from unsloth import FastVisionModel,FastLanguageModel
@@ -135,38 +143,184 @@ def load_unsloth(model,type):
     else:
         model, tokenizer = FastLanguageModel.from_pretrained(
             model,
+            max_seq_length = 16000,
             load_in_4bit = False, # Use 4bit to reduce memory use. False for 16bit LoRA.
+            cache_dir= "/dss/dssfs05/lwp-dss-0003/pn46ju/pn46ju-dss-0001/mortadha/models"
         )
         FastLanguageModel.for_inference(model)
     return model, tokenizer
 def generate_unsloth(message,model,tokenizer,type,gen_args = {}):
-    if type == "text":
-        messages = [
-            {"role" : "user", "content" : message}
-        ]
-        tokenized = tokenizer.apply_chat_template(messages,add_generation_prompt=True,return_tensors = "pt",return_dict=True).to("cuda")
-        output = model.generate(
-        **tokenized,
-        **gen_args
-        )[0]
+    with torch.no_grad():
+        if type == "text":
+            messages = [
+                {"role" : "user", "content" : message}
+            ]
+            tokenized = tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                return_tensors = "pt",
+                #enable_thinking=False,
+                return_dict=True,).to("cuda")
+            output = model.generate(
+            **tokenized,
+            max_new_tokens = 512,
+            **gen_args
+            )[0]
 
-        response = tokenizer.decode(output[len(tokenized["input_ids"][0]):])
+            response = tokenizer.decode(
+                output[len(tokenized["input_ids"][0]):],
+                skip_special_tokens=True
+            )
 
-    else:
-        messages = [
-        {"role" : "user", "content" :message}
-        ]
-        input_text = tokenizer.apply_chat_template(messages, add_generation_prompt = True)
-        inputs = tokenizer(
-            None,
-            input_text,
-            add_special_tokens = False,
-            return_tensors = "pt",
-        ).to("cuda")
-        output = model.generate(**inputs, **gen_args)[0]
-        response = tokenizer.decode(output[len(tokenized["input_ids"][0]):])
+            # Remove common chat artifacts
+            response = re.sub(r"<\|.*?\|>", "", response)
+            response = re.sub(r"\[/?INST\]", "", response)
+            response = re.sub(r"</s>", "", response)
 
-    return response
+            # Cle8an whitespace
+            response = response.strip()
+
+        else:
+            messages = [
+            {"role" : "user", "content" :message}
+            ]
+            input_text = tokenizer.apply_chat_template(messages, add_generation_prompt = True)
+            inputs = tokenizer(
+                None,
+                input_text,
+                add_special_tokens = False,
+                return_tensors = "pt",
+            ).to("cuda")
+            output = model.generate(**inputs, **gen_args)[0]
+            response = tokenizer.decode(output[len(tokenized["input_ids"][0]):])
+
+        return response
+
+
+def load_model_hf(model_name,type="text"):
+    """
+    Load a model using Hugging Face transformers without Unsloth.
+    
+    Args:
+        model_name: Model identifier (e.g., 'meta-llama/Llama-2-7b-hf')
+    
+    Returns:
+        model: The loaded model
+        tokenizer: The loaded tokenizer
+    """
+    if  type == "t5":
+        model = T5ForConditionalGeneration.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map="auto")                                                                 
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        return model, tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name,
+        cache_dir="/dss/dssfs05/lwp-dss-0003/pn46ju/pn46ju-dss-0001/mortadha/models"
+    )
+    
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        torch_dtype="auto",  # Use float16 for efficiency (equivalent to 16bit LoRA)
+        device_map="auto",  # Automatically place model on GPU/CPU
+        cache_dir="/dss/dssfs05/lwp-dss-0003/pn46ju/pn46ju-dss-0001/mortadha/models"
+    )
+    
+    model.eval()  # Set to evaluation mode
+    return model, tokenizer
+
+
+def generate_hf(message, model, tokenizer, type, gen_args={}):
+    """
+    Generate text using Hugging Face models.
+    
+    Args:
+        message: Input message/prompt
+        model: The model to use for generation
+        tokenizer: The tokenizer for encoding/decoding
+        type: Type of generation (e.g., "text")
+        gen_args: Additional generation arguments (temperature, top_p, etc.)
+    
+    Returns:
+        response: Generated text response
+    """
+    with torch.no_grad():
+        if type == "text":
+            messages = [
+                {"role": "user", "content": message}
+            ]
+            
+            # Apply chat template if available, otherwise use basic formatting
+            if hasattr(tokenizer, 'apply_chat_template'):
+                try:
+                    tokenized = tokenizer.apply_chat_template(
+                        messages,
+                        add_generation_prompt=True,
+                        return_tensors="pt",
+                        enable_thinking=False,
+                        reasoning_effort="none",
+                        return_dict=True,
+                    ).to("cuda")
+                except Exception as e:
+                    # Fallback if chat template is not available
+                    text = messages[0]["content"]
+                    tokenized = tokenizer(
+                        text,
+                        return_tensors="pt",
+                        return_dict=True,
+                    ).to("cuda")
+            else:
+                # Fallback for models without chat template
+                text = messages[0]["content"]
+                tokenized = tokenizer(
+                    text,
+                    return_tensors="pt",
+                    return_dict=True,
+                ).to("cuda")
+            
+            # Set default generation parameters
+            generation_params = {
+                "max_new_tokens": 512,
+                "do_sample":False,
+            }
+            # Update with user-provided arguments
+            generation_params.update(gen_args)
+            
+            # Generate output
+            output = model.generate(
+                **tokenized,
+                **generation_params,
+                pad_token_id=tokenizer.eos_token_id,
+            )[0]
+            
+            # Decode only the generated tokens (exclude input)
+            response = tokenizer.decode(
+                output[len(tokenized["input_ids"][0]):],
+                skip_special_tokens=True
+            )
+            # Remove common chat artifacts
+            response = re.sub(r"<\|.*?\|>", "", response)
+            response = re.sub(r"\[/?INST\]", "", response)
+            response = re.sub(r"</s>", "", response)
+            
+            # Clean whitespace
+            response = response.strip()
+            print(response)
+            return response
+
+        if type == "t5":
+
+            inputs = tokenizer(message, return_tensors="pt").input_ids.to("cuda")
+            outputs = model.generate(inputs, max_length=512, **gen_args)
+            response = tokenizer.decode(outputs[0])
+            response = re.sub(r"<\.*?\>", "", response)
+            response = re.sub(r"\[/?INST\]", "", response)
+            response = re.sub(r"</s>", "", response)
+            response = re.sub(r"<pad>", "", response)
+            # Clean whitespace
+            response = response.strip()
+            print(response)
+            return response
+
+
 
 
 def example_based_f1(y_true,y_pred):

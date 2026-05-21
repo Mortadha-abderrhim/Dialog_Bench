@@ -4,7 +4,6 @@ charset-normalizer==3.4.7
 cuda-pathfinder==1.5.4
 cuda-toolkit==13.0.2
 cut-cross-entropy==25.1.1
-dialog_bench==0.1.0
 docstring_parser==0.18.0
 et_xmlfile==2.0.0
 jsonlines==4.0.0
