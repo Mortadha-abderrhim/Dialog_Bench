@@ -11,9 +11,7 @@ import numpy as np
 import re
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer,T5ForConditionalGeneration
-
-#torch._dynamo.config.suppress_errors = True
-
+from pprint import pprint
 tqdm.pandas() 
 
 
@@ -137,6 +135,7 @@ def load_unsloth(model,type):
         model, tokenizer = FastVisionModel.from_pretrained(
             model,
             load_in_4bit = False, # Use 4bit to reduce memory use. False for 16bit LoRA.
+            device_map = "balanced",
             use_gradient_checkpointing = "unsloth", # True or "unsloth" for long context
         )
         FastVisionModel.for_inference(model)
@@ -145,6 +144,7 @@ def load_unsloth(model,type):
             model,
             max_seq_length = 16000,
             load_in_4bit = False, # Use 4bit to reduce memory use. False for 16bit LoRA.
+            device_map = "balanced",
             cache_dir= "/dss/dssfs05/lwp-dss-0003/pn46ju/pn46ju-dss-0001/mortadha/models"
         )
         FastLanguageModel.for_inference(model)
@@ -190,10 +190,17 @@ def generate_unsloth(message,model,tokenizer,type,gen_args = {}):
                 input_text,
                 add_special_tokens = False,
                 return_tensors = "pt",
+                enable_thinking=False,
             ).to("cuda")
-            output = model.generate(**inputs, **gen_args)[0]
-            response = tokenizer.decode(output[len(tokenized["input_ids"][0]):])
-
+            output = model.generate(**inputs,
+            max_new_tokens = 512,
+             **gen_args)[0]
+            response = tokenizer.decode(output[len(inputs["input_ids"][0]):])
+             # Remove common chat artifacts
+            response = re.sub(r"<.*?>", "", response)
+            # Cle8an whitespace
+            response = response.strip()
+        print(response)
         return response
 
 
@@ -208,27 +215,31 @@ def load_model_hf(model_name,type="text"):
         model: The loaded model
         tokenizer: The loaded tokenizer
     """
+    
+
     if  type == "t5":
         model = T5ForConditionalGeneration.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map="auto")                                                                 
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         return model, tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name,
-        cache_dir="/dss/dssfs05/lwp-dss-0003/pn46ju/pn46ju-dss-0001/mortadha/models"
-    )
+    if type == "text":
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_name,
+            cache_dir="/dss/dssfs05/lwp-dss-0003/pn46ju/pn46ju-dss-0001/mortadha/models"
+        )
+        
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype="auto",  # Use float16 for efficiency (equivalent to 16bit LoRA)
+            device_map="balanced",  # Automatically place model on GPU/CPU
+            cache_dir="/dss/dssfs05/lwp-dss-0003/pn46ju/pn46ju-dss-0001/mortadha/models"
+        )
+        
+        model.eval()  # Set to evaluation mode
+        return model, tokenizer
     
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype="auto",  # Use float16 for efficiency (equivalent to 16bit LoRA)
-        device_map="auto",  # Automatically place model on GPU/CPU
-        cache_dir="/dss/dssfs05/lwp-dss-0003/pn46ju/pn46ju-dss-0001/mortadha/models"
-    )
-    
-    model.eval()  # Set to evaluation mode
-    return model, tokenizer
 
 
-def generate_hf(message, model, tokenizer, type, gen_args={}):
+def generate_hf(message, model, tokenizer, type, gen_args={},ignore_template = False):
     """
     Generate text using Hugging Face models.
     
@@ -249,7 +260,7 @@ def generate_hf(message, model, tokenizer, type, gen_args={}):
             ]
             
             # Apply chat template if available, otherwise use basic formatting
-            if hasattr(tokenizer, 'apply_chat_template'):
+            if hasattr(tokenizer, 'apply_chat_template') and not(ignore_template):
                 try:
                     tokenized = tokenizer.apply_chat_template(
                         messages,
@@ -258,7 +269,7 @@ def generate_hf(message, model, tokenizer, type, gen_args={}):
                         enable_thinking=False,
                         reasoning_effort="none",
                         return_dict=True,
-                    ).to("cuda")
+                    ).to(next(model.parameters()).device)
                 except Exception as e:
                     # Fallback if chat template is not available
                     text = messages[0]["content"]
@@ -266,7 +277,7 @@ def generate_hf(message, model, tokenizer, type, gen_args={}):
                         text,
                         return_tensors="pt",
                         return_dict=True,
-                    ).to("cuda")
+                    ).to(next(model.parameters()).device)
             else:
                 # Fallback for models without chat template
                 text = messages[0]["content"]
@@ -274,7 +285,7 @@ def generate_hf(message, model, tokenizer, type, gen_args={}):
                     text,
                     return_tensors="pt",
                     return_dict=True,
-                ).to("cuda")
+                ).to(next(model.parameters()).device)
             
             # Set default generation parameters
             generation_params = {
@@ -300,10 +311,10 @@ def generate_hf(message, model, tokenizer, type, gen_args={}):
             response = re.sub(r"<\|.*?\|>", "", response)
             response = re.sub(r"\[/?INST\]", "", response)
             response = re.sub(r"</s>", "", response)
-            
+            if "assistantfinal" in response:
+                response = response.rsplit("assistantfinal",1)[1]
             # Clean whitespace
             response = response.strip()
-            print(response)
             return response
 
         if type == "t5":
@@ -317,7 +328,7 @@ def generate_hf(message, model, tokenizer, type, gen_args={}):
             response = re.sub(r"<pad>", "", response)
             # Clean whitespace
             response = response.strip()
-            print(response)
+            
             return response
 
 
