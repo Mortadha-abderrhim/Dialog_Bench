@@ -120,21 +120,59 @@ def generate_ollama(message,url,model,options={}):
     Generate a response using openAI API, the input message is a parameter string, the name of the model as well, take API key from environment
 """
 def generate_openai(message,model,url = "http://localhost:8000/v1"):
-    
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"),base_url=url)
-    response = client.responses.create(
-        model=model,
-        input = message,
-        reasoning={"effort": "none"}
+    if "qwen" in model:
         
+        client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.environ.get('OPENROUTER_API_KEY'),
         )
-    return response.output_text
+
+        # First API call with reasoning
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                    {
+                        "role": "user",
+                        "content": message
+                    }
+                    ],
+            max_completion_tokens=512,
+            extra_body={"reasoning": {"enabled": True},"temperature":0,"max_completion_tokens":512}
+        )
+
+        # Extract the assistant message with reasoning_details
+        print(response.choices[0].message.content)
+        return response.choices[0].message.content
+    if "deepseek" in model:
+        client = OpenAI(
+            api_key=os.environ.get('DEEPSEEK_API_KEY'),
+            base_url="https://api.deepseek.com")
+
+        response = client.chat.completions.create(
+            model=model,
+            messages= [
+                {"role" : "user", "content" : message}
+            ],
+            stream=False,
+            extra_body={"thinking": {"type": "disabled"}}
+        )
+        return response.choices[0].message.content
+    else:
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"),base_url=url)
+        response = client.responses.create(
+            model=model,
+            input = message,
+            reasoning={"effort": "none"}
+            
+            )
+        return response.output_text
+
 def load_unsloth(model,type):
     from unsloth import FastVisionModel,FastLanguageModel
     if type == "vision":
         model, tokenizer = FastVisionModel.from_pretrained(
             model,
-            load_in_4bit = False, # Use 4bit to reduce memory use. False for 16bit LoRA.
+            load_in_4bit = True, # Use 4bit to reduce memory use. False for 16bit LoRA.
             device_map = "balanced",
             use_gradient_checkpointing = "unsloth", # True or "unsloth" for long context
         )
@@ -143,7 +181,7 @@ def load_unsloth(model,type):
         model, tokenizer = FastLanguageModel.from_pretrained(
             model,
             max_seq_length = 16000,
-            load_in_4bit = False, # Use 4bit to reduce memory use. False for 16bit LoRA.
+            load_in_4bit = True, # Use 4bit to reduce memory use. False for 16bit LoRA.
             device_map = "balanced",
             cache_dir= "/dss/dssfs05/lwp-dss-0003/pn46ju/pn46ju-dss-0001/mortadha/models"
         )
@@ -231,6 +269,7 @@ def load_model_hf(model_name,type="text"):
             model_name,
             torch_dtype="auto",  # Use float16 for efficiency (equivalent to 16bit LoRA)
             device_map="balanced",  # Automatically place model on GPU/CPU
+            trust_remote_code=True,  # Allow loading custom code from the model repository
             cache_dir="/dss/dssfs05/lwp-dss-0003/pn46ju/pn46ju-dss-0001/mortadha/models"
         )
         
@@ -266,8 +305,8 @@ def generate_hf(message, model, tokenizer, type, gen_args={},ignore_template = F
                         messages,
                         add_generation_prompt=True,
                         return_tensors="pt",
-                        enable_thinking=False,
-                        reasoning_effort="none",
+                        enable_thinking=True,
+                        reasoning_effort="medium",
                         return_dict=True,
                     ).to(next(model.parameters()).device)
                 except Exception as e:
@@ -307,6 +346,7 @@ def generate_hf(message, model, tokenizer, type, gen_args={},ignore_template = F
                 output[len(tokenized["input_ids"][0]):],
                 skip_special_tokens=True
             )
+            print(response)
             # Remove common chat artifacts
             response = re.sub(r"<\|.*?\|>", "", response)
             response = re.sub(r"\[/?INST\]", "", response)
@@ -315,6 +355,7 @@ def generate_hf(message, model, tokenizer, type, gen_args={},ignore_template = F
                 response = response.rsplit("assistantfinal",1)[1]
             # Clean whitespace
             response = response.strip()
+            print(response)
             return response
 
         if type == "t5":

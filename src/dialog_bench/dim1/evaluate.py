@@ -52,7 +52,10 @@ def evaluate(data,col,generate,sim_model,nb_samples =100):
     warnings.warn("Generating resposes for the test set, this may take a while...")
     testset["generated"] = testset["dialogue"].progress_apply(lambda x: generate(random.choice(list(prompts[col].values())).format(INPUT_DIALOGUE=x)))
     if col in label_map.keys():
-        score = (testset["generated"].apply(lambda x: label_map[col].get(x[0],""))==testset[col]).mean()
+        score = (
+                testset["generated"].apply(lambda x: label_map[col].get(x[0], "") if x else "")
+                == testset[col]
+            ).mean()
         
     else:
         warnings.warn("Not a MCQ column, using cosine similarity for evaluation, this may take a moment...")
@@ -112,10 +115,10 @@ if __name__ == "__main__":
                 warnings.warn(f"Feature {col} not recognized. Skipping ...")
                 continue
             else: 
-                score = evaluate(data,args.column,generate,sim_model,args.samples)
+                score = evaluate(data,col,generate,sim_model,args.samples)
                 with jsonlines.open(results_path, mode='a') as writer:
-                    writer.write({"dim":"1","column":  args.column, "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args})
-                print(f"Score for {args.column}: {score}")
+                    writer.write({"dim":"1","column":  col, "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args})
+                print(f"Score for {col}: {score}")
     else:
         columns = ["learning_context", "comm_modality","agent_config", "subject", "edu_level"]
         for col in columns:
