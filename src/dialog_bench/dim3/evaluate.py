@@ -21,7 +21,7 @@ taxonomy_path = HERE /"taxonomies.json"
 
 
 
-def evaluate_annotation(data,generate,nb_samples,task="act_annotation"):
+def evaluate_annotation(data,generate,nb_samples,task="act_annotation",with_context = False):
     with open(prompt_path,"r") as f:
         prompts = json.load(f)
     with open(taxonomy_path,"r") as f:
@@ -51,7 +51,8 @@ def evaluate_annotation(data,generate,nb_samples,task="act_annotation"):
                     next_act = act_list[-1]
                     annotated_dialogue = "\n".join([turn+ " <act = " + act_list[i].lower()+">" for i,turn in enumerate(past_dialogue.split("\n"))])
                 taxonomy ="\n".join(([k + ": "+ v for k,v in taxonomies[row["dataset"]].items()]))
-                df.append({"dialogue":annotated_dialogue, "turn":next_turn, "act":next_act.lower(),"taxonomy":taxonomy,"dataset":row["dataset"]})
+                context = "Educational level: "+str(row["edu_level"]) + "\nLearning context: "+ str(row["learning_context"]) + "\nSubject: "+ str(row["subject"]) + "\nCommunication modality: "+ str(row["comm_modality"]) + "\nAgents configuration: "+ str(row["agent_config"])
+                df.append({"dialogue":annotated_dialogue, "turn":next_turn, "act":next_act.lower(),"taxonomy":taxonomy,"dataset":row["dataset"],"context":context})
         else:
             speakers = ast.literal_eval(row["speakers"]) if isinstance(row["speakers"], str) else row["speakers"]
             turns = ast.literal_eval(row["turns"]) if isinstance(row["turns"], str) else row["turns"]
@@ -62,8 +63,11 @@ def evaluate_annotation(data,generate,nb_samples,task="act_annotation"):
                     annotated_dialogue+= speaker + ": " + turn +"\n"
                 else:
                     taxonomy ="\n".join(([k.lower() + ": "+ v for k,v in taxonomies[row["dataset"]].items()]))
-                    df.append({"dialogue":annotated_dialogue, "turn":turn, "act":act.lower(),"taxonomy":taxonomy,"dataset":row["dataset"]})
+                    context = "Educational level: "+str(row["edu_level"]) + "\nLearning context: "+ str(row["learning_context"]) + "\nSubject: "+ str(row["subject"]) + "\nCommunication modality: "+ str(row["comm_modality"]) + "\nAgents configuration: "+ str(row["agent_config"])
+
+                    df.append({"dialogue":annotated_dialogue, "turn":turn, "act":act.lower(),"taxonomy":taxonomy,"dataset":row["dataset"],"context":context})
                     annotated_dialogue += speaker + ": " + turn +"<act = "+ act.lower() +">" +"\n"
+        
                     
     df = pd.DataFrame(df)
     ## We choose to remove examples where the act to be predicted is not in the taxonmy usually due to typos in the data (can be matched to closest but ...)
@@ -81,11 +85,20 @@ def evaluate_annotation(data,generate,nb_samples,task="act_annotation"):
         else:
             testset.append(grp.sample(min(grp.shape[0],nb_samples)))
     testset = pd.concat(testset,ignore_index=True)
+
+    print(testset.iloc[0]["context"])
     print(testset["dataset"].value_counts())
+    
     if task == "act_annotation":
-        testset["generated"] = testset.progress_apply(lambda x: generate(random.choice(list(prompts[task]["multi" if x["dataset"] in multi else "single"].values())).format(TAXONOMY= x["taxonomy"],ANNOTATED_DIALOGUE = x["dialogue"],NEXT_TURN=x["turn"])),axis=1)
+        if with_context:
+            testset["generated"] = testset.progress_apply(lambda x: generate(random.choice(list(prompts["context"][task]["multi" if x["dataset"] in multi else "single"].values())).format(TAXONOMY= x["taxonomy"],ANNOTATED_DIALOGUE = x["dialogue"],NEXT_TURN=x["turn"], CONTEXT=x["context"])),axis=1)
+        else:
+            testset["generated"] = testset.progress_apply(lambda x: generate(random.choice(list(prompts["original"][task]["multi" if x["dataset"] in multi else "single"].values())).format(TAXONOMY= x["taxonomy"],ANNOTATED_DIALOGUE = x["dialogue"],NEXT_TURN=x["turn"])),axis=1)
     else:
-        testset["generated"] = testset.progress_apply(lambda x: generate(random.choice(list(prompts[task]["multi" if x["dataset"] in multi else "single"].values())).format(TAXONOMY= x["taxonomy"],ANNOTATED_DIALOGUE = x["dialogue"])),axis=1)
+        if with_context:
+            testset["generated"] = testset.progress_apply(lambda x: generate(random.choice(list(prompts["context"][task]["multi" if x["dataset"] in multi else "single"].values())).format(TAXONOMY= x["taxonomy"],ANNOTATED_DIALOGUE = x["dialogue"],CONTEXT=x["context"])),axis=1)
+        else:
+            testset["generated"] = testset.progress_apply(lambda x: generate(random.choice(list(prompts["original"][task]["multi" if x["dataset"] in multi else "single"].values())).format(TAXONOMY= x["taxonomy"],ANNOTATED_DIALOGUE = x["dialogue"])),axis=1)
 
     testset["score"] = example_f1(testset,taxonomies)
     print(testset.groupby("dataset")["score"].mean())
@@ -104,6 +117,7 @@ if __name__ == "__main__":
     parser.add_argument("--gen_args", type=str, help="Generation arguments for unsloth in dict format", default="{}")
     parser.add_argument("--random", type=int, help="Generation arguments for unsloth in dict format", default=42)
     parser.add_argument("--samples", type=int, help="Generation arguments for unsloth in dict format", default=100)
+    parser.add_argument("--with_context", action="store_true", help="Whether to include context in the prompt")
 
     args = parser.parse_args()
     
@@ -128,11 +142,10 @@ if __name__ == "__main__":
     else:   
         raise NotImplementedError("Backend is not supported for now")
     
-    score,detailed = evaluate_annotation(data,generate,args.samples,"act_annotation")
+    score,detailed = evaluate_annotation(data,generate,args.samples,"act_annotation",args.with_context)
     with jsonlines.open(results_path, mode='a') as writer:
-       writer.write({"dim":"3","column": "acts_annotation", "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args,"detailed":detailed})
-    score,detailed = evaluate_annotation(data,generate,args.samples,"act_prediction")
+       writer.write({"dim":"3","column": "acts_annotation", "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args,"detailed":detailed,"with_context":args.with_context})
+    score,detailed = evaluate_annotation(data,generate,args.samples,"act_prediction",args.with_context)
     with jsonlines.open(results_path, mode='a') as writer:
-       writer.write({"dim":"3","column": "act_prediction", "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args,"detailed":detailed})
-
+       writer.write({"dim":"3","column": "act_prediction", "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args,"detailed":detailed,"with_context":args.with_context})
     

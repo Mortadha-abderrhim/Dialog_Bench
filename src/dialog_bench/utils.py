@@ -146,7 +146,6 @@ def load_unsloth(model,type):
             max_seq_length = 16000,
             load_in_4bit = False, # Use 4bit to reduce memory use. False for 16bit LoRA.
             device_map = "balanced",
-            cache_dir= "/dss/dssfs05/lwp-dss-0003/pn46ju/pn46ju-dss-0001/mortadha/models"
         )
         FastLanguageModel.for_inference(model)
     return model, tokenizer
@@ -227,7 +226,6 @@ def load_model_hf(model_name,type="text"):
     if type == "text":
         tokenizer = AutoTokenizer.from_pretrained(
             model_name,
-            cache_dir="/dss/dssfs05/lwp-dss-0003/pn46ju/pn46ju-dss-0001/mortadha/models"
         )
         
         model = AutoModelForCausalLM.from_pretrained(
@@ -235,7 +233,6 @@ def load_model_hf(model_name,type="text"):
             torch_dtype="auto",  # Use float16 for efficiency (equivalent to 16bit LoRA)
             device_map="balanced",  # Automatically place model on GPU/CPU
             trust_remote_code=True,  # Allow loading custom code from the model repository
-            cache_dir="/dss/dssfs05/lwp-dss-0003/pn46ju/pn46ju-dss-0001/mortadha/models"
         )
         
         model.eval()  # Set to evaluation mode
