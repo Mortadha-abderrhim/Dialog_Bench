@@ -182,7 +182,7 @@ if __name__ == "__main__":
         raise NotImplementedError("Backend is not supported for now")
     
     
-    score = evaluate_teacher(data,generate,args.samples)
+    """score = evaluate_teacher(data,generate,args.samples)
     with jsonlines.open(results_path, mode='a') as writer:
         writer.write({"dim":"2","column": "teacher_id", "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args})
     score = evaluate_next_speaker(data,generate,args.samples)
@@ -193,7 +193,7 @@ if __name__ == "__main__":
         writer.write({"dim":"2","column": "next_turn", "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args})
     score = evaluate_turn(data,generate,sim_model,"previous",args.samples)
     with jsonlines.open(results_path, mode='a') as writer:
-        writer.write({"dim":"2","column": "previous_turn", "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args})
+        writer.write({"dim":"2","column": "previous_turn", "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args})"""
     score = evaluate_chunk_ordering(data,generate,sim_model,args.samples)
     with jsonlines.open(results_path, mode='a') as writer:
         writer.write({"dim":"2","column": "chunk_ordering", "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args})

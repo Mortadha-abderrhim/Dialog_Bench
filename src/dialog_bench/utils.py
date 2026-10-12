@@ -181,7 +181,7 @@ def load_unsloth(model,type):
         model, tokenizer = FastLanguageModel.from_pretrained(
             model,
             max_seq_length = 16000,
-            load_in_4bit = True, # Use 4bit to reduce memory use. False for 16bit LoRA.
+            load_in_4bit = False, # Use 4bit to reduce memory use. False for 16bit LoRA.
             device_map = "balanced",
             cache_dir= "/dss/dssfs05/lwp-dss-0003/pn46ju/pn46ju-dss-0001/mortadha/models"
         )
@@ -229,6 +229,8 @@ def generate_unsloth(message,model,tokenizer,type,gen_args = {}):
                 add_special_tokens = False,
                 return_tensors = "pt",
                 enable_thinking=False,
+                
+
             ).to("cuda")
             output = model.generate(**inputs,
             max_new_tokens = 512,
@@ -275,6 +277,14 @@ def load_model_hf(model_name,type="text"):
         
         model.eval()  # Set to evaluation mode
         return model, tokenizer
+    if type == "vision":
+        from transformers import AutoProcessor, AutoModelForMultimodalLM
+        processor = AutoProcessor.from_pretrained(model_name)
+        model = AutoModelForMultimodalLM.from_pretrained(model_name, device_map="auto")
+        return model, processor
+
+
+
     
 
 
@@ -293,6 +303,38 @@ def generate_hf(message, model, tokenizer, type, gen_args={},ignore_template = F
         response: Generated text response
     """
     with torch.no_grad():
+        if type == "vision":
+            messages = [
+                {"role": "user", "content": [{"type": "text", "text": message}]}
+            ]
+            inputs = tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                tokenize=True,
+                return_dict=True,
+                enable_thinking=False,
+                return_tensors="pt",
+            ).to(model.device)
+            generation_params = {
+                "max_new_tokens": 512,
+                "do_sample":False,
+            }
+            outputs = model.generate(
+                **inputs,
+                **generation_params,
+                            )[0]
+            response = tokenizer.decode(outputs[inputs["input_ids"].shape[-1]:])
+            response = re.sub(r"<\.*?\>", "", response)
+            response = re.sub(r"\[/?INST\]", "", response)
+            response = re.sub(r"</s>", "", response)
+            response = re.sub(r"<pad>", "", response)
+            # Clean whitespace
+            response = response.strip()
+            print(response)
+            
+            return response
+
+
         if type == "text":
             messages = [
                 {"role": "user", "content": message}

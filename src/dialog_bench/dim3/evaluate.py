@@ -89,7 +89,7 @@ def evaluate_annotation(data,generate,nb_samples,task="act_annotation"):
 
     testset["score"] = example_f1(testset,taxonomies)
     print(testset.groupby("dataset")["score"].mean())
-    return testset["score"].mean()
+    return testset["score"].mean(),testset.groupby("dataset")["score"].mean().to_dict()
 
 
 
@@ -128,11 +128,11 @@ if __name__ == "__main__":
     else:   
         raise NotImplementedError("Backend is not supported for now")
     
-    score = evaluate_annotation(data,generate,args.samples,"act_annotation")
+    score,detailed = evaluate_annotation(data,generate,args.samples,"act_annotation")
     with jsonlines.open(results_path, mode='a') as writer:
-       writer.write({"dim":"3","column": "acts_annotation", "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args})
-    score = evaluate_annotation(data,generate,args.samples,"act_prediction")
+       writer.write({"dim":"3","column": "acts_annotation", "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args,"detailed":detailed})
+    score,detailed = evaluate_annotation(data,generate,args.samples,"act_prediction")
     with jsonlines.open(results_path, mode='a') as writer:
-       writer.write({"dim":"3","column": "act_prediction", "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args})
+       writer.write({"dim":"3","column": "act_prediction", "score": score, "model": args.model, "nb_samples":args.samples,"seed":RD,"args":args.gen_args,"detailed":detailed})
 
     
