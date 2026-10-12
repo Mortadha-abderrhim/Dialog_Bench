@@ -119,53 +119,16 @@ def generate_ollama(message,url,model,options={}):
 """
     Generate a response using openAI API, the input message is a parameter string, the name of the model as well, take API key from environment
 """
-def generate_openai(message,model,url = "http://localhost:8000/v1"):
-    if "qwen" in model:
+def generate_openai(message,model):
+    
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    response = client.responses.create(
+        model=model,
+        input = message,
+        reasoning={"effort": "medium"}
         
-        client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=os.environ.get('OPENROUTER_API_KEY'),
         )
-
-        # First API call with reasoning
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                    {
-                        "role": "user",
-                        "content": message
-                    }
-                    ],
-            max_completion_tokens=512,
-            extra_body={"reasoning": {"enabled": True},"temperature":0,"max_completion_tokens":512}
-        )
-
-        # Extract the assistant message with reasoning_details
-        print(response.choices[0].message.content)
-        return response.choices[0].message.content
-    if "deepseek" in model:
-        client = OpenAI(
-            api_key=os.environ.get('DEEPSEEK_API_KEY'),
-            base_url="https://api.deepseek.com")
-
-        response = client.chat.completions.create(
-            model=model,
-            messages= [
-                {"role" : "user", "content" : message}
-            ],
-            stream=False,
-            extra_body={"thinking": {"type": "disabled"}}
-        )
-        return response.choices[0].message.content
-    else:
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"),base_url=url)
-        response = client.responses.create(
-            model=model,
-            input = message,
-            reasoning={"effort": "none"}
-            
-            )
-        return response.output_text
+    return response.output_text
 
 def load_unsloth(model,type):
     from unsloth import FastVisionModel,FastLanguageModel
